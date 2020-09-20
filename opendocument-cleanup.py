@@ -97,7 +97,7 @@ if len(sys_arguments):
 			try: search_pos = content.index('<style:style', search_pos)
 			except: break
 			# check to see if it's used anywhere
-			try: content.index('text:style-name="' + get_property(search_pos, 'style:name'))
+			try: content.index('style-name="' + get_property(search_pos, 'style:name'))
 			# remove style
 			except:
 				content = content[:search_pos] + content[content.index('</style:style>', search_pos) + 14:]
@@ -114,7 +114,7 @@ if len(sys_arguments):
 			try: search_pos = content.index('<text:list-style', search_pos)
 			except: break
 			# check to see if it's used anywhere
-			try: content.index('text:style-name="' + get_property(search_pos, 'style:name'))
+			try: content.index('style-name="' + get_property(search_pos, 'style:name'))
 			# remove style
 			except:
 				content = content[:search_pos] + content[content.index('</text:list-style>', search_pos) + 18:]
@@ -139,13 +139,37 @@ if len(sys_arguments):
 				except: break
 				# remove style
 				if style_data == content[content.find('"', compare_pos + 25) : content.find('</style:style>', compare_pos)]:
-					content = content.replace('text:style-name="' + get_property(compare_pos, 'style:name'), 'text:style-name="' + get_property(search_pos, 'style:name'))
+					content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
 					content = content[:compare_pos] + content[content.index('</style:style>', compare_pos) + 14:]
 					removed += 1
 				# next style
 				else: compare_pos += 1
 			search_pos += 1
 		if removed: print("\033[92mRemoved", removed, "duplicate styles.\033[0m")
+		
+		print("Searching for duplicate list styles...")
+		search_pos = 0
+		removed = 0
+		while True:
+			# find style
+			try: search_pos = content.index('<text:list-style', search_pos)
+			except: break
+			# get data in matchable format
+			style_data = content[content.find('"', search_pos + 30) : content.find('</text:list-style>', search_pos)]
+			# search for matching style
+			compare_pos = search_pos + 1
+			while True:
+				try: compare_pos = content.index('<text:list-style', compare_pos)
+				except: break
+				# remove style
+				if style_data == content[content.find('"', compare_pos + 30) : content.find('</text:list-style>', compare_pos)]:
+					content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
+					content = content[:compare_pos] + content[content.index('</text:list-style>', compare_pos) + 18:]
+					removed += 1
+				# next style
+				else: compare_pos += 1
+			search_pos += 1
+		if removed: print("\033[92mRemoved", removed, "duplicate list styles!\033[0m")
 		
 		
 		print("\nUpdating document...")
