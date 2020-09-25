@@ -9,7 +9,7 @@ sys_arguments.pop(0)
 if not len(sys_arguments):
 	print("\033[95m──────── OpenDocument Cleanup Script ────────\033[0m")
 	print("This script is used to clean up OpenDocument Text (.odt) files, because LibreOffice doesn't seem to do any cleanup when saving on it's own.")
-	print("To view information on how to use this script, use '-h' or '--help' after the command used to run it.")
+	print("To view information on how to use this script, run it with '-h' or '--help' after the script name.")
 	exit()
 
 # get arguments
@@ -35,8 +35,8 @@ while len(sys_arguments):
 		sys_arguments.pop(0)
 	# "minus" argument
 	elif sys_arguments[0][0] == "-":
-		if sys_arguments[0] == "-v": verbosity_string = sys_arguments.pop(1)
 		if sys_arguments[0] == "-d": disposal = sys_arguments.pop(1)
+		if sys_arguments[0] == "-v": verbosity_string = sys_arguments.pop(1)
 		else:
 			if not sys_arguments[0].find("h") == -1:
 				show_help = True
@@ -62,7 +62,7 @@ if show_help:
 	print("	Display this menu. This argument overrides all other operations, regardless of what other arguments are used.")
 	print("-d, --disposal <none|trash|overwrite>")
 	print("	Determines what is to be done with the original document after cleanup.")
-	print("	none ────── Leave original documents untouched, creating copies with '-cleanup' at the end of the name. (default)")
+	print("	none ────── Leave original documents untouched, creating copies with '-cleanup' at the end of the filename. (default)")
 	print("	trash ───── Move original documents to trash, replacing them with the cleaned documents.")
 	print("	overwrite ─ Overwrite original documents. I strongly advise against using this. This script is not perfect, and may make mistakes!")
 	print("-f, --removefonts")
@@ -93,7 +93,7 @@ if verbosity_string:
 	if verbosity < 0 or verbosity > 4:
 		error = True
 		print("\033[93mERROR: '" + verbosity_string + "' is not a valid verbosity!\033[0m")
-		print("Verbosity must be an integer (whole number) from 0 to 4.\nSee help (-h or --help) for more info on arguments.")
+		print("Verbosity must be an integer from 0 to 4.\nSee help (-h or --help) for more info on arguments.")
 		verbosity = 4
 elif len(arguments) and os.path.isdir(arguments[0]): verbosity = 3
 else: verbosity = 4
@@ -357,8 +357,10 @@ for document in documents:
 			elif disposal == "trash":
 				send2trash(document)
 				os.rename(document + ".cleanup", document)
-			elif document[-4:] == ".odt": os.rename(document + ".cleanup", document.replace(".odt", "-cleaned.odt"))
-			elif document[-4:] == ".ott": os.rename(document + ".cleanup", document.replace(".ott", "-cleaned.ott"))
+			elif document_name.rfind("."):
+				copy_path = arguments[0][:arguments[0].rfind(".")] + "-optimized" + arguments[0][arguments[0].rfind("."):]
+				document_name = os.path.basename(copy_path)
+				os.rename(arguments[0] + ".optimize", copy_path)
 			else: os.rename(document + ".cleanup", document + "-cleaned")
-			if verbosity >= 2: print("\033[92m" + document_name, "saved.\033[0m")
+			if verbosity >= 2: print("\033[92m" + document_name + " saved.\033[0m")
 if len(documents): print(documents_cleaned, "out of", len(documents), "documents cleaned.")
