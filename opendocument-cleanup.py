@@ -159,7 +159,7 @@ elif os.path.isdir(arguments[0]):
 				documents += get_documents(path)
 		return documents
 	
-	documents = get_documents(arguments[0])
+	documents = sorted(get_documents(arguments[0]))
 	
 	if len(documents):
 		if verbosity >= 2: print("Found", len(documents), "documents.")
@@ -176,191 +176,196 @@ else:
 	if verbosity >= 1: print("\033[93mERROR: '" + arguments[0] + "' is not a valid file or directory!\033[0m")
 	exit()
 
+
 # cleanup documents
 documents_cleaned = 0
 for document in documents:
-	document_name = os.path.basename(document)
 	
+	document_name = os.path.basename(document)
 	if verbosity >= 4: print("\nReading \033[95m" + document_name + "\033[0m.")
 	elif verbosity >= 3: print("\033[95m" + document_name + "\033[0m")
-	content = zipfile.Path(document, "content.xml").read_text()
 	
+	try: content = zipfile.Path(document, "content.xml").read_text()
+	except:
+		if verbosity >= 1: print("\033[93mERROR: '" + document_name + "' has disappeared! Skipping document.\033[0m")
 	
-	def get_xml_end(xml, search_pos):
-		if not xml[search_pos] == '<': search_pos = xml.find('<', 0, search_pos)
-		levels = 0
-		while True:
-			block_end = xml.find('>', search_pos)
-			if xml[search_pos + 1] == '/': levels -= 1
-			elif not xml[block_end - 1] == '/': levels += 1
-			if levels <= 0: return block_end + 1
-			search_pos = xml.find('<', search_pos + 1)
-	
-	
-	if verbosity >= 4: print("Beginning content cleanup process...\n")
-	
-	def get_property(element_pos, name):
-		start = content.find(name + '="', element_pos) + len(name) + 2
-		return content[start : content.find('"', start)]
-	
-	def remove_all_elements(elements = []):
-		global content
+	else:
+		def get_xml_end(xml, search_pos):
+			if not xml[search_pos] == '<': search_pos = xml.find('<', 0, search_pos)
+			levels = 0
+			while True:
+				block_end = xml.find('>', search_pos)
+				if xml[search_pos + 1] == '/': levels -= 1
+				elif not xml[block_end - 1] == '/': levels += 1
+				if levels <= 0: return block_end + 1
+				search_pos = xml.find('<', search_pos + 1)
+		
+		
+		if verbosity >= 4: print("Beginning content cleanup process...\n")
+		
+		def get_property(element_pos, name):
+			start = content.find(name + '="', element_pos) + len(name) + 2
+			return content[start : content.find('"', start)]
+		
+		def remove_all_elements(elements = []):
+			global content
+			removed = 0
+			while True:
+				try:
+					search_pos = content.index(elements[0])
+					end_pos = search_pos + len(elements[0])
+					for element in elements[1:]: end_pos = content.index(element, end_pos) + len(element)
+				except:
+					return removed
+				content = content[0:search_pos] + content[end_pos:]
+				removed += 1
+		
+		
+		if verbosity >= 4: print("Removing irrelevant data...")
+		if not content.find(' officeooo:rsid="') == -1:
+			removed = remove_all_elements([' officeooo:rsid="', '"'])
+			if verbosity >= 3: print("\033[92mRemoved", removed, "officeooo:rsid entries\033[0m")
+		if not content.find(' loext:opacity="100%"') == -1:
+			removed = remove_all_elements([' loext:opacity="100%"'])
+			if verbosity >= 3: print("\033[92mRemoved", removed, "loext:opacity entries\033[0m")
+		if remove_fonts:
+			if verbosity >= 4: print("Searching for fonts...")
+			if not content.find('<style:font-face') == -1:
+				removed = remove_all_elements(['<style:font-face', '/>'])
+				if verbosity >= 3: print("\033[94mRemoved", removed, "fonts.\033[0m")
+			if not content.find(' style:font-name="') == -1:
+				removed = remove_all_elements([' style:font-name="', '"'])
+				if verbosity >= 3: print("\033[94mRemoved font from", removed, "styles.\033[0m")
+		if remove_language:
+			if verbosity >= 4: print("Searching for languages and countries...")
+			if not content.find('style:language') == -1:
+				removed = remove_all_elements([' style:language', '"', '"'])
+				if verbosity >= 3: print("\033[92mLanguages removed from direct formatting in", removed, "places.\033[0m")
+			if not content.find('style:country') == -1:
+				removed = remove_all_elements([' style:country', '"', '"'])
+				if verbosity >= 3: print("\033[92mCountries removed from direct formatting in", removed, "places.\033[0m")
+		
+		if verbosity >= 4: print("Searching for orphan styles...")
+		search_pos = 0
 		removed = 0
 		while True:
-			try:
-				search_pos = content.index(elements[0])
-				end_pos = search_pos + len(elements[0])
-				for element in elements[1:]: end_pos = content.index(element, end_pos) + len(element)
+			# find style
+			try: search_pos = content.index('<style:style', search_pos)
+			except: break
+			# check to see if it's used anywhere
+			try: content.index('style-name="' + get_property(search_pos, 'style:name'))
+			# remove style
 			except:
-				return removed
-			content = content[0:search_pos] + content[end_pos:]
-			removed += 1
-	
-	
-	if verbosity >= 4: print("Removing irrelevant data...")
-	if not content.find(' officeooo:rsid="') == -1:
-		removed = remove_all_elements([' officeooo:rsid="', '"'])
-		if verbosity >= 3: print("\033[92mRemoved", removed, "officeooo:rsid entries\033[0m")
-	if not content.find(' loext:opacity="100%"') == -1:
-		removed = remove_all_elements([' loext:opacity="100%"'])
-		if verbosity >= 3: print("\033[92mRemoved", removed, "loext:opacity entries\033[0m")
-	if remove_fonts:
-		if verbosity >= 4: print("Searching for fonts...")
-		if not content.find('<style:font-face') == -1:
-			removed = remove_all_elements(['<style:font-face', '/>'])
-			if verbosity >= 3: print("\033[94mRemoved", removed, "fonts.\033[0m")
-		if not content.find(' style:font-name="') == -1:
-			removed = remove_all_elements([' style:font-name="', '"'])
-			if verbosity >= 3: print("\033[94mRemoved font from", removed, "styles.\033[0m")
-	if remove_language:
-		if verbosity >= 4: print("Searching for languages and countries...")
-		if not content.find('style:language') == -1:
-			removed = remove_all_elements([' style:language', '"', '"'])
-			if verbosity >= 3: print("\033[92mLanguages removed from direct formatting in", removed, "places.\033[0m")
-		if not content.find('style:country') == -1:
-			removed = remove_all_elements([' style:country', '"', '"'])
-			if verbosity >= 3: print("\033[92mCountries removed from direct formatting in", removed, "places.\033[0m")
-	
-	if verbosity >= 4: print("Searching for orphan styles...")
-	search_pos = 0
-	removed = 0
-	while True:
-		# find style
-		try: search_pos = content.index('<style:style', search_pos)
-		except: break
-		# check to see if it's used anywhere
-		try: content.index('style-name="' + get_property(search_pos, 'style:name'))
-		# remove style
-		except:
-			content = content[:search_pos] + content[get_xml_end(content, search_pos):]
-			removed += 1
-		# next style
-		else: search_pos += 1
-	if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "orphan styles.\033[0m")
-	
-	if verbosity >= 4: print("Searching for orphan list styles...")
-	search_pos = 0
-	removed = 0
-	while True:
-		# find style
-		try: search_pos = content.index('<text:list-style', search_pos)
-		except: break
-		# check to see if it's used anywhere
-		try: content.index('style-name="' + get_property(search_pos, 'style:name'))
-		# remove style
-		except:
-			content = content[:search_pos] + content[get_xml_end(content, search_pos):]
-			removed += 1
-		# next style
-		else: search_pos += 1
-	if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "orphan lists styles.\033[0m")
-	
-	if verbosity >= 4: print("Searching for duplicate styles...")
-	search_pos = 0
-	removed = 0
-	while True:
-		# find style
-		try: search_pos = content.index('<style:style', search_pos)
-		except: break
-		# get data in matchable format
-		style_data = content[content.find('"', search_pos + 25) : get_xml_end(content, search_pos)]
-		# search for matching style
-		compare_pos = search_pos + 1
-		while True:
-			try: compare_pos = content.index('<style:style', compare_pos)
-			except: break
-			# remove style
-			if style_data == content[content.find('"', compare_pos + 25) : get_xml_end(content, compare_pos)]:
-				content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
-				content = content[:compare_pos] + content[get_xml_end(content, compare_pos):]
+				content = content[:search_pos] + content[get_xml_end(content, search_pos):]
 				removed += 1
 			# next style
-			else: compare_pos += 1
-		search_pos += 1
-	if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "duplicate styles.\033[0m")
-	
-	if verbosity >= 4: print("Searching for duplicate list styles...")
-	search_pos = 0
-	removed = 0
-	while True:
-		# find style
-		try: search_pos = content.index('<text:list-style', search_pos)
-		except: break
-		# get data in matchable format
-		style_data = content[content.find('"', search_pos + 30) : get_xml_end(content, search_pos)]
-		# search for matching style
-		compare_pos = search_pos + 1
+			else: search_pos += 1
+		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "orphan styles.\033[0m")
+		
+		if verbosity >= 4: print("Searching for orphan list styles...")
+		search_pos = 0
+		removed = 0
 		while True:
-			try: compare_pos = content.index('<text:list-style', compare_pos)
+			# find style
+			try: search_pos = content.index('<text:list-style', search_pos)
 			except: break
+			# check to see if it's used anywhere
+			try: content.index('style-name="' + get_property(search_pos, 'style:name'))
 			# remove style
-			if style_data == content[content.find('"', compare_pos + 30) : get_xml_end(content, compare_pos)]:
-				content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
-				content = content[:compare_pos] + content[get_xml_end(content, compare_pos):]
+			except:
+				content = content[:search_pos] + content[get_xml_end(content, search_pos):]
 				removed += 1
 			# next style
-			else: compare_pos += 1
-		search_pos += 1
-	if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "duplicate list styles.\033[0m")
-	
-	search_pos = 0
-	empty = 0
-	while True:
-		# find style
-		try: search_pos = content.index('<style:style', search_pos)
-		except: break
-		# check properties
-		if not content.find('<style:text-properties/>', search_pos, get_xml_end(content, search_pos)) == -1: empty += 1
-		search_pos += 1
-	if empty:
-		if verbosity >= 4: print("Found", empty, "empty styles leftover. LibreOffice will clean these up on it's own when saving the document.")
-		elif verbosity >= 3: print("Found", empty, "empty styles leftover.")
-	
-	if content == zipfile.Path(document, "content.xml").read_text():
-		if verbosity >= 2: print("No changes have been made to the document. Skipping saving process.")
-	else:
-		try:
-			with zipfile.ZipFile(document) as doc:
-				with zipfile.ZipFile(document + ".cleanup", "w") as temp_doc:
-					if verbosity >= 4: print("\nUpdating", document_name, "...")
-					temp_doc.writestr("content.xml", content.encode(), compress_type=zipfile.ZIP_DEFLATED)
-					for item in doc.infolist():
-						if not temp_doc.namelist().count(item.filename):
-							temp_doc.writestr(item, doc.read(item.filename))
-			documents_cleaned += 1
-		except:
-			if verbosity >= 1: print("\033[93mSaving failed! Document has not been modified.\033[0m")
+			else: search_pos += 1
+		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "orphan lists styles.\033[0m")
+		
+		if verbosity >= 4: print("Searching for duplicate styles...")
+		search_pos = 0
+		removed = 0
+		while True:
+			# find style
+			try: search_pos = content.index('<style:style', search_pos)
+			except: break
+			# get data in matchable format
+			style_data = content[content.find('"', search_pos + 25) : get_xml_end(content, search_pos)]
+			# search for matching style
+			compare_pos = search_pos + 1
+			while True:
+				try: compare_pos = content.index('<style:style', compare_pos)
+				except: break
+				# remove style
+				if style_data == content[content.find('"', compare_pos + 25) : get_xml_end(content, compare_pos)]:
+					content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
+					content = content[:compare_pos] + content[get_xml_end(content, compare_pos):]
+					removed += 1
+				# next style
+				else: compare_pos += 1
+			search_pos += 1
+		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "duplicate styles.\033[0m")
+		
+		if verbosity >= 4: print("Searching for duplicate list styles...")
+		search_pos = 0
+		removed = 0
+		while True:
+			# find style
+			try: search_pos = content.index('<text:list-style', search_pos)
+			except: break
+			# get data in matchable format
+			style_data = content[content.find('"', search_pos + 30) : get_xml_end(content, search_pos)]
+			# search for matching style
+			compare_pos = search_pos + 1
+			while True:
+				try: compare_pos = content.index('<text:list-style', compare_pos)
+				except: break
+				# remove style
+				if style_data == content[content.find('"', compare_pos + 30) : get_xml_end(content, compare_pos)]:
+					content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
+					content = content[:compare_pos] + content[get_xml_end(content, compare_pos):]
+					removed += 1
+				# next style
+				else: compare_pos += 1
+			search_pos += 1
+		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "duplicate list styles.\033[0m")
+		
+		search_pos = 0
+		empty = 0
+		while True:
+			# find style
+			try: search_pos = content.index('<style:style', search_pos)
+			except: break
+			# check properties
+			if not content.find('<style:text-properties/>', search_pos, get_xml_end(content, search_pos)) == -1: empty += 1
+			search_pos += 1
+		if empty:
+			if verbosity >= 4: print("Found", empty, "empty styles leftover. LibreOffice will clean these up on it's own when saving the document.")
+			elif verbosity >= 3: print("Found", empty, "empty styles leftover.")
+		
+		if content == zipfile.Path(document, "content.xml").read_text():
+			if verbosity >= 2: print("No changes have been made to the document. Skipping saving process.")
 		else:
-			if disposal == "overwrite":
-				os.remove(document)
-				os.rename(document + ".cleanup", document)
-			elif disposal == "trash":
-				send2trash(document)
-				os.rename(document + ".cleanup", document)
-			elif document_name.rfind("."):
-				copy_path = arguments[0][:arguments[0].rfind(".")] + "-optimized" + arguments[0][arguments[0].rfind("."):]
-				document_name = os.path.basename(copy_path)
-				os.rename(arguments[0] + ".optimize", copy_path)
-			else: os.rename(document + ".cleanup", document + "-cleaned")
-			if verbosity >= 2: print("\033[92m" + document_name + " saved.\033[0m")
-if len(documents): print(documents_cleaned, "out of", len(documents), "documents cleaned.")
+			try:
+				with zipfile.ZipFile(document) as doc:
+					with zipfile.ZipFile(document + ".cleanup", "w") as temp_doc:
+						if verbosity >= 4: print("\nUpdating", document_name, "...")
+						temp_doc.writestr("content.xml", content.encode(), compress_type=zipfile.ZIP_DEFLATED)
+						for item in doc.infolist():
+							if not temp_doc.namelist().count(item.filename):
+								temp_doc.writestr(item, doc.read(item.filename))
+				documents_cleaned += 1
+			except:
+				if verbosity >= 1: print("\033[93mSaving failed! Document has not been modified.\033[0m")
+			else:
+				if disposal == "overwrite":
+					os.remove(document)
+					os.rename(document + ".cleanup", document)
+				elif disposal == "trash":
+					send2trash(document)
+					os.rename(document + ".cleanup", document)
+				elif document_name.rfind("."):
+					copy_path = document[:document.rfind(".")] + "-cleaned" + document[document.rfind("."):]
+					document_name = os.path.basename(copy_path)
+					os.rename(document + ".cleanup", copy_path)
+				else: os.rename(document + ".cleanup", document + "-cleaned")
+				if verbosity >= 2: print("\033[92m" + document_name + " saved.\033[0m")
+
+if len(documents) > 1: print(documents_cleaned, "out of", len(documents), "documents cleaned.")
