@@ -57,6 +57,7 @@ if show_help:
 	print("This script is used to clean up formatting in OpenDocument Text (.odt) files. By default, this includes unused or redundant information in the content of the document.")
 	print("The document cleanup only affects the content of the document, being everything that's on the page. That means styles will remain untouched.")
 	print("To cleanup a document, run the script with the path to the document you want to cleanup after the script name. You can also put a path to a folder containing all the documents you want to clean up. By default, cleaned-up documents will be saved as copies. That way, just in case the script does something that messes up a document, you still have the original. It's a good idea to make sure your documents still look right after using the script.")
+	print("If an unhandled error occurs when running the script, check on GitHub to see if it's been fixed recently, or if it hasn't, feel free to post the issue.")
 	print("\n\033[95m──────── Arguments ────────\033[0m")
 	print("-h, --help")
 	print("	Display this menu. This argument overrides all other operations, regardless of what other arguments are used.")
@@ -146,23 +147,27 @@ if os.path.isfile(arguments[0]):
 
 # if given directory
 elif os.path.isdir(arguments[0]):
+	if verbosity >= 3: print("Finding documents...")
+	documents = []
+	
 	def get_documents(directory):
-		if verbosity >= 3: print("Finding documents...")
-		documents = []
+		global documents
+		dir_documents = []
 		for sub_path in os.listdir(directory):
 			path = os.path.join(directory, sub_path)
 			if os.path.isfile(path) and is_document(path):
-				if verbosity >= 3: print("Found document", sub_path)
-				documents.append(path)
+				if verbosity >= 4: print("Found document", sub_path)
+				dir_documents.append(path)
 			elif recursive and os.path.isdir(path):
 				if verbosity >= 4: print("Found directory", path)
-				documents += get_documents(path)
-		return documents
+				get_documents(path)
+		if verbosity >= 3 and recursive and len(dir_documents): print("Found", len(dir_documents), "documents in", directory)
+		documents += sorted(dir_documents)
 	
-	documents = sorted(get_documents(arguments[0]))
+	get_documents(arguments[0])
 	
 	if len(documents):
-		if verbosity >= 2: print("Found", len(documents), "documents.")
+		if verbosity >= 2: print("Total of", len(documents), "documents found.")
 	else:
 		if verbosity >= 1:
 			if recursive: print("\033[93mNo documents found in " + arguments[0] + " or any subdirectories.\033[0m")
@@ -210,15 +215,13 @@ for document in documents:
 		def remove_all_elements(elements = []):
 			global content
 			removed = 0
-			while True:
-				try:
-					search_pos = content.index(elements[0])
-					end_pos = search_pos + len(elements[0])
-					for element in elements[1:]: end_pos = content.index(element, end_pos) + len(element)
-				except:
-					return removed
+			while elements[0] in content:
+				search_pos = content.find(elements[0])
+				end_pos = search_pos + len(elements[0])
+				for element in elements[1:]: end_pos = content.index(element, end_pos) + len(element)
 				content = content[0:search_pos] + content[end_pos:]
 				removed += 1
+			return removed
 		
 		
 		if verbosity >= 4: print("Removing irrelevant data...")
@@ -248,51 +251,43 @@ for document in documents:
 		if verbosity >= 4: print("Searching for orphan styles...")
 		search_pos = 0
 		removed = 0
-		while True:
+		while '<style:style' in content[search_pos:]:
 			# find style
-			try: search_pos = content.index('<style:style', search_pos)
-			except: break
+			search_pos = content.find('<style:style', search_pos)
 			# check to see if it's used anywhere
-			try: content.index('style-name="' + get_property(search_pos, 'style:name'))
-			# remove style
-			except:
+			if 'style-name="' + get_property(search_pos, 'style:name') in content: search_pos += 1
+			else:
+				# remove style
 				content = content[:search_pos] + content[get_xml_end(content, search_pos):]
 				removed += 1
-			# next style
-			else: search_pos += 1
 		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "orphan styles.\033[0m")
 		
 		if verbosity >= 4: print("Searching for orphan list styles...")
 		search_pos = 0
 		removed = 0
-		while True:
+		while '<text:list-style' in content[search_pos:]:
 			# find style
-			try: search_pos = content.index('<text:list-style', search_pos)
-			except: break
+			search_pos = content.find('<text:list-style', search_pos)
 			# check to see if it's used anywhere
-			try: content.index('style-name="' + get_property(search_pos, 'style:name'))
-			# remove style
-			except:
+			if 'style-name="' + get_property(search_pos, 'style:name') in content: search_pos += 1
+			else:
+				# remove style
 				content = content[:search_pos] + content[get_xml_end(content, search_pos):]
 				removed += 1
-			# next style
-			else: search_pos += 1
 		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "orphan lists styles.\033[0m")
 		
 		if verbosity >= 4: print("Searching for duplicate styles...")
 		search_pos = 0
 		removed = 0
-		while True:
+		while '<style:style' in content[search_pos:]:
 			# find style
-			try: search_pos = content.index('<style:style', search_pos)
-			except: break
+			search_pos = content.find('<style:style', search_pos)
 			# get data in matchable format
 			style_data = content[content.find('"', search_pos + 25) : get_xml_end(content, search_pos)]
 			# search for matching style
 			compare_pos = search_pos + 1
-			while True:
-				try: compare_pos = content.index('<style:style', compare_pos)
-				except: break
+			while '<style:style' in content[compare_pos:]:
+				compare_pos = content.find('<style:style', compare_pos)
 				# remove style
 				if style_data == content[content.find('"', compare_pos + 25) : get_xml_end(content, compare_pos)]:
 					content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
@@ -306,17 +301,15 @@ for document in documents:
 		if verbosity >= 4: print("Searching for duplicate list styles...")
 		search_pos = 0
 		removed = 0
-		while True:
+		while '<text:list-style' in content[search_pos:]:
 			# find style
-			try: search_pos = content.index('<text:list-style', search_pos)
-			except: break
+			search_pos = content.find('<text:list-style', search_pos)
 			# get data in matchable format
 			style_data = content[content.find('"', search_pos + 30) : get_xml_end(content, search_pos)]
 			# search for matching style
 			compare_pos = search_pos + 1
-			while True:
-				try: compare_pos = content.index('<text:list-style', compare_pos)
-				except: break
+			while '<text:list-style' in content[compare_pos:]:
+				compare_pos = content.find('<text:list-style', compare_pos)
 				# remove style
 				if style_data == content[content.find('"', compare_pos + 30) : get_xml_end(content, compare_pos)]:
 					content = content.replace('style-name="' + get_property(compare_pos, 'style:name'), 'style-name="' + get_property(search_pos, 'style:name'))
@@ -328,17 +321,16 @@ for document in documents:
 		if verbosity >= 3 and removed: print("\033[92mRemoved", removed, "duplicate list styles.\033[0m")
 		
 		search_pos = 0
-		empty = 0
-		while True:
+		empty = False
+		while '<style:style' in content[search_pos:] and not empty:
 			# find style
-			try: search_pos = content.index('<style:style', search_pos)
-			except: break
+			search_pos = content.find('<style:style', search_pos)
 			# check properties
-			if not content.find('<style:text-properties/>', search_pos, get_xml_end(content, search_pos)) == -1: empty += 1
+			if '<style:text-properties/>' in content[search_pos : get_xml_end(content, search_pos)]: empty = True
 			search_pos += 1
 		if empty:
-			if verbosity >= 4: print("Found", empty, "empty styles leftover. LibreOffice will clean these up on it's own when saving the document.")
-			elif verbosity >= 3: print("Found", empty, "empty styles leftover.")
+			if verbosity >= 4: print("\033[93mFound an empty style leftover.\033[0m LibreOffice will clean these up on it's own when saving the document.")
+			elif verbosity >= 3: print("\033[93mFound an empty style leftover.\033[0m")
 		
 		if content == zipfile.Path(document, "content.xml").read_text():
 			if verbosity >= 2: print("No changes have been made to the document. Skipping saving process.")
