@@ -2,88 +2,85 @@
 
 from sys import argv
 from sys import exit
+import os
+import zipfile
 sys_arguments = argv
 sys_arguments.pop(0)
 
-# display script info
+# basic script info
 if not len(sys_arguments):
 	print("\033[95m──────── OpenDocument Cleanup Script ────────\033[0m")
-	print("This script is used to clean up OpenDocument Text (.odt) files, because LibreOffice doesn't seem to do any cleanup when saving on it's own.")
+	print("This script is used to clean up OpenDocument files, because LibreOffice doesn't seem to do cleanup when saving on it's own.")
 	print("To view information on how to use this script, run it with '-h' or '--help' after the script name.")
 	exit()
 
 # get arguments
 arguments = []
 show_help = False
+disposal = "none"
 remove_fonts = False
 remove_language = True
-disposal = "none"
 recursive = False
 verbosity_string = ""
 
 while len(sys_arguments):
-	# "minus minus" argument
-	if sys_arguments[0][:1] == "--":
+	# argument
+	if sys_arguments[0][0] == "-":
+		# combinable arguments
+		if not sys_arguments[0][1] == "-":
+			if "h" in sys_arguments[0]:
+				show_help = True
+				break
+			if "f" in sys_arguments[0]: remove_fonts = True
+			if "l" in sys_arguments[0]: remove_language = False
+			if "r" in sys_arguments[0]: recursive = True
+		# other arguments
 		if sys_arguments[0] == "--help":
 			show_help = True
 			break
-		if sys_arguments[0] == "--disposal": disposal = sys_arguments.pop(1)
+		if sys_arguments[0] == "-d" or sys_arguments[0] == "--disposal": disposal = sys_arguments.pop(1)
 		if sys_arguments[0] == "--removefonts": remove_fonts = True
 		if sys_arguments[0] == "--keeplanguage": remove_language = False
 		if sys_arguments[0] == "--recursive": recursive = True
-		if sys_arguments[0] == "--verbosity": verbosity_string = sys_arguments.pop(1)
-		sys_arguments.pop(0)
-	# "minus" argument
-	elif sys_arguments[0][0] == "-":
-		if sys_arguments[0] == "-d": disposal = sys_arguments.pop(1)
-		if sys_arguments[0] == "-v": verbosity_string = sys_arguments.pop(1)
-		else:
-			if not sys_arguments[0].find("h") == -1:
-				show_help = True
-				break
-			if not sys_arguments[0].find("f") == -1: remove_fonts = True
-			if not sys_arguments[0].find("l") == -1: remove_language = False
-			if not sys_arguments[0].find("r") == -1: recursive = True
-		sys_arguments.pop(0)
-	# other argument
-	else:
-		arguments.append(sys_arguments.pop(0))
+		if sys_arguments[0] == "-v" or sys_arguments[0] == "--verbosity": verbosity_string = sys_arguments.pop(1)
+	# positional argument
+	else: arguments.append(sys_arguments[0])
+	# remove argument
+	sys_arguments.pop(0)
 
 del sys_arguments
 
-# display help
+# help
 if show_help:
 	print("\n\033[95m──────── OpenDocument Cleanup Usage ────────\033[0m")
-	print("This script is used to clean up formatting in OpenDocument Text (.odt) files. By default, this includes unused or redundant information in the content of the document.")
-	print("The document cleanup only affects the content of the document, being everything that's on the page. That means styles will remain untouched.")
-	print("To cleanup a document, run the script with the path to the document you want to cleanup after the script name. You can also put a path to a folder containing all the documents you want to clean up. By default, cleaned-up documents will be saved as copies. That way, just in case the script does something that messes up a document, you still have the original. It's a good idea to make sure your documents still look right after using the script.")
+	print("This script is used to clean up formatting in OpenDocument files. It is focused on cleaning text documents, but should also be able to clean any OpenDocument types. By default, cleaning removes unused or redundant information in the content of the file.")
+	print("The cleanup only affects the content.xml, which has everything that's on the page. That means your styles and such will remain untouched.")
+	print("To cleanup a file, run the script with the path to the file you want to cleanup after the script name. You can also put a path to a directory to clean up all the files within it. By default, cleaned-up files will be saved as copies. That way, just in case the script does something that messes up a file, you still have the original. It's a good idea to make sure your files still look right after using the script.")
 	print("If an unhandled error occurs when running the script, check on GitHub to see if it's been fixed recently, or if it hasn't, feel free to post the issue.")
 	print("\n\033[95m──────── Arguments ────────\033[0m")
 	print("-h, --help")
 	print("	Display this menu. This argument overrides all other operations, regardless of what other arguments are used.")
 	print("-d, --disposal <none|trash|overwrite>")
-	print("	Determines what is to be done with the original document after cleanup.")
-	print("	none ────── Leave original documents untouched, creating copies with '-cleanup' at the end of the filename. (default)")
-	print("	trash ───── Move original documents to trash, replacing them with the cleaned documents.")
-	print("	overwrite ─ Overwrite original documents. I strongly advise against using this. This script is not perfect, and may make mistakes!")
+	print("	What to do with the original file after cleanup.")
+	print("	none ────── Leave untouched and create a copy with '-cleanup' at the end of the name. (default)")
+	print("	trash ───── Move to trash and replace with the cleaned files.")
+	print("	overwrite ─ Overwrite originals. I strongly advise against using this. This script is not perfect, and may make mistakes!")
 	print("-f, --removefonts")
-	print("	Remove font information (typeface only) from direct formatting information. I highly suggest using this if only one font is used in a given document.")
+	print("	Remove font information (typeface only) from direct formatting information. I highly suggest using this if only one font is used in a given file.")
 	print("-l, --keeplanguage")
 	print("	Keep language and country information. Not sure what this information is for honestly, but I'm pretty sure it isn't important enough to justify the mess it makes.")
 	print("-r, --recursive")
-	print("	Also look in subdirectories when searching for documents in a directory.")
-	print("-v, --verbosity <amount, 0-3>")
-	print("	Changes the amount of information that is printed during cleanup.")
-	print("	0 ─	Nothing (not recommended)")
-	print("	1 ─	Errors only")
-	print("	2 ─	+ Error tips & Opening/saving")
-	print("	3 ─	+ Data removal stats (default when given a directory to clean)")
-	print("	4 ─	All available info (default when given a single document to clean)")
+	print("	Also search in subdirectories when given a directory.")
+	print("-v, --verbosity <integer from 0-4>")
+	print("	How much information will be printed.")
+	print("	0 ─ nothing (not recommended)")
+	print("	1 ─ errors only")
+	print("	2 ─ + error tips & opening/saving")
+	print("	3 ─ + data removal stats (default when given directory)")
+	print("	4 ─ all available info (default when given file)")
 	exit()
 
 # error checking
-import os
-
 error = False
 
 # get verbosity
@@ -99,7 +96,7 @@ if verbosity_string:
 elif len(arguments) and os.path.isdir(arguments[0]): verbosity = 3
 else: verbosity = 4
 
-# check if disposal method is valid
+# check disposal method
 if not (disposal == "none" or disposal == "trash" or disposal == "overwrite"):
 	error = True
 	if verbosity >= 1:
@@ -115,59 +112,57 @@ except:
 		print("\033[93mERROR: No such module 'send2trash'.\033[0m")
 		if verbosity >= 2: print("The python module send2trash is required to use the trash disposal method. Either get send2trash, or use a different disposal method.")
 
-# if no path given
+# check path
 if not len(arguments):
 	error = True
 	if verbosity >= 1:
 		print("\033[93mERROR: No path given!\033[0m")
-		if verbosity >= 2: print("Please name a path to a document or directory to cleanup.")
+		if verbosity >= 2: print("Please name a path to an OpenDocument file or directory to cleanup.")
 
 # exit if there were errors
 if error: exit()
 del error
 
 
-# get documents
-import zipfile
+# get files
 
-# test if a file is a valid document
+# test if file is a valid document
 def is_document(path):
-	if zipfile.is_zipfile(path) and zipfile.Path(path, "content.xml").exists(): return True
-	else: return False
+	return zipfile.is_zipfile(path) and zipfile.Path(path, "content.xml").exists()
 
-# if given single file
+# given file
 if os.path.isfile(arguments[0]):
-	if is_document(arguments[0]): documents = [arguments[0]]
-	# not document file error
+	if is_document(arguments[0]): files = [arguments[0]]
+	# if not a document file
 	else:
 		if verbosity >= 1:
 			print("\033[93mERROR: '" + os.path.basename(arguments[0]) + "' is not a document file!\033[0m")
 			if verbosity >= 2: print("This script can only clean up OpenDocument Text files. (These typically end in .odt or .ott.)")
 		exit()
 
-# if given directory
+# given directory
 elif os.path.isdir(arguments[0]):
 	if verbosity >= 3: print("Finding documents...")
-	documents = []
+	files = []
 	
 	def get_documents(directory):
-		global documents
-		dir_documents = []
+		global files
+		dir_files = []
 		for sub_path in os.listdir(directory):
 			path = os.path.join(directory, sub_path)
 			if os.path.isfile(path) and is_document(path):
-				if verbosity >= 4: print("Found document", sub_path)
-				dir_documents.append(path)
+				if verbosity >= 4: print("Found file", sub_path)
+				dir_files.append(path)
 			elif recursive and os.path.isdir(path):
 				if verbosity >= 4: print("Found directory", path)
 				get_documents(path)
-		if verbosity >= 3 and recursive and len(dir_documents): print("Found", len(dir_documents), "documents in", directory)
-		documents += sorted(dir_documents)
+		if verbosity >= 3 and recursive and len(dir_files): print("Found", len(dir_files), "files in", directory)
+		files += sorted(dir_files)
 	
 	get_documents(arguments[0])
 	
-	if len(documents):
-		if verbosity >= 2: print("Total of", len(documents), "documents found.")
+	if len(files):
+		if verbosity >= 2: print("Total of", len(files), "files found.")
 	else:
 		if verbosity >= 1:
 			if recursive: print("\033[93mNo documents found in " + arguments[0] + " or any subdirectories.\033[0m")
@@ -182,18 +177,20 @@ else:
 	exit()
 
 
-# cleanup documents
-documents_cleaned = 0
-for document in documents:
+# cleanup files
+files_cleaned = 0
+for file in files:
 	
-	document_name = os.path.basename(document)
-	if verbosity >= 4: print("\nReading \033[95m" + document_name + "\033[0m.")
-	elif verbosity >= 3: print("\033[95m" + document_name + "\033[0m")
+	file_name = os.path.basename(file)
+	if verbosity >= 4: print("\nReading \033[95m" + file_name + "\033[0m.")
+	elif verbosity >= 3: print("\033[95m" + file_name + "\033[0m")
 	
-	try: content = zipfile.Path(document, "content.xml").read_text()
+	# get data
+	try: content = zipfile.Path(file, "content.xml").read_text()
 	except:
-		if verbosity >= 1: print("\033[93mERROR: '" + document_name + "' has disappeared! Skipping document.\033[0m")
+		if verbosity >= 1: print("\033[93mERROR: '" + file_name + "' is invalid or has disappeared! Skipping file.\033[0m")
 	
+	# clean file
 	else:
 		def get_xml_end(xml, search_pos):
 			if not xml[search_pos] == '<': search_pos = xml.find('<', 0, search_pos)
@@ -329,35 +326,31 @@ for document in documents:
 			if '<style:text-properties/>' in content[search_pos : get_xml_end(content, search_pos)]: empty = True
 			search_pos += 1
 		if empty:
-			if verbosity >= 4: print("\033[93mFound an empty style leftover.\033[0m LibreOffice will clean these up on it's own when saving the document.")
+			if verbosity >= 4: print("\033[93mFound an empty style leftover.\033[0m LibreOffice will clean these up on it's own when saving the file.")
 			elif verbosity >= 3: print("\033[93mFound an empty style leftover.\033[0m")
 		
-		if content == zipfile.Path(document, "content.xml").read_text():
-			if verbosity >= 2: print("No changes have been made to the document. Skipping saving process.")
+		if content == zipfile.Path(file, "content.xml").read_text():
+			if verbosity >= 2: print("No changes made. Skipping saving process.")
 		else:
+			if verbosity >= 4: print("\nUpdating " + file_name + "...")
 			try:
-				with zipfile.ZipFile(document) as doc:
-					with zipfile.ZipFile(document + ".cleanup", "w") as temp_doc:
-						if verbosity >= 4: print("\nUpdating", document_name, "...")
+				with zipfile.ZipFile(file) as doc:
+					with zipfile.ZipFile(file + ".cleanup", "w") as temp_doc:
 						temp_doc.writestr("content.xml", content.encode(), compress_type=zipfile.ZIP_DEFLATED)
 						for item in doc.infolist():
 							if not temp_doc.namelist().count(item.filename):
 								temp_doc.writestr(item, doc.read(item.filename))
-				documents_cleaned += 1
 			except:
-				if verbosity >= 1: print("\033[93mSaving failed! Document has not been modified.\033[0m")
+				if verbosity >= 1: print("\033[93mSaving failed! File has not been modified.\033[0m")
 			else:
-				if disposal == "overwrite":
-					os.remove(document)
-					os.rename(document + ".cleanup", document)
-				elif disposal == "trash":
-					send2trash(document)
-					os.rename(document + ".cleanup", document)
-				elif document_name.rfind("."):
-					copy_path = document[:document.rfind(".")] + "-cleaned" + document[document.rfind("."):]
-					document_name = os.path.basename(copy_path)
-					os.rename(document + ".cleanup", copy_path)
-				else: os.rename(document + ".cleanup", document + "-cleaned")
-				if verbosity >= 2: print("\033[92m" + document_name + " saved.\033[0m")
+				new_file = file
+				if disposal == "trash": send2trash(file)
+				elif disposal == "none":
+					if "." in file_name: new_file = file[:file.rfind(".")] + "-cleaned" + file[file.rfind("."):]
+					else: new_file += "-cleaned"
+				os.rename(file + ".cleanup", new_file)
+				
+				if verbosity >= 2: print("\033[92m" + os.path.basename(new_file) + " saved.\033[0m")
+				files_cleaned += 1
 
-if len(documents) > 1: print(documents_cleaned, "out of", len(documents), "documents cleaned.")
+if len(files) > 1: print(files_cleaned, "out of", len(files), "files cleaned.")
