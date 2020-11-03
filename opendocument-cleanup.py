@@ -104,13 +104,13 @@ if not (disposal == "none" or disposal == "trash" or disposal == "overwrite"):
 		if verbosity >= 2: print("Valid disposal methods are: none, trash, overwrite\nSee help (-h or --help) for more info on arguments.")
 
 # check for send2trash
-try:
-	if disposal == "trash": from send2trash import send2trash
-except:
-	error = True
-	if verbosity >= 1:
-		print("\033[93mERROR: No such module 'send2trash'.\033[0m")
-		if verbosity >= 2: print("The python module send2trash is required to use the trash disposal method. Either get send2trash, or use a different disposal method.")
+if disposal == "trash":
+	try: from send2trash import send2trash
+	except:
+		error = True
+		if verbosity >= 1:
+			print("\033[93mERROR: No such module 'send2trash'.\033[0m")
+			if verbosity >= 2: print("The python module send2trash is required to use the trash disposal method. Either get send2trash, or use a different disposal method.")
 
 # check path
 if not len(arguments):
@@ -154,9 +154,9 @@ elif os.path.isdir(arguments[0]):
 				if verbosity >= 4: print("Found file", sub_path)
 				dir_files.append(path)
 			elif recursive and os.path.isdir(path):
-				if verbosity >= 4: print("Found directory", path)
+				if verbosity >= 4: print("Found directory", os.path.abspath(path))
 				get_documents(path)
-		if verbosity >= 3 and recursive and len(dir_files): print("Found", len(dir_files), "files in", directory)
+		if verbosity >= 3 and recursive and len(dir_files): print("Found", len(dir_files), "files in", os.path.abspath(directory))
 		files += sorted(dir_files)
 	
 	get_documents(arguments[0])
@@ -165,28 +165,28 @@ elif os.path.isdir(arguments[0]):
 		if verbosity >= 2: print("Total of", len(files), "files found.")
 	else:
 		if verbosity >= 1:
-			if recursive: print("\033[93mNo documents found in " + arguments[0] + " or any subdirectories.\033[0m")
+			if recursive: print("\033[93mNo documents found in '" + os.path.abspath(arguments[0]) + "' or any subdirectories.\033[0m")
 			else:
-				print("\033[93mNo documents found in " + arguments[0] + ".\033[0m")
+				print("\033[93mNo documents found in '" + os.path.abspath(arguments[0]) + "'.\033[0m")
 				if verbosity >= 2: print("Use -r or --recursive to also search subdirectories.")
 		exit()
 
 # if given path is not a valid file or directory
 else:
-	if verbosity >= 1: print("\033[93mERROR: '" + arguments[0] + "' is not a valid file or directory!\033[0m")
+	if verbosity >= 1: print("\033[93mERROR: '" + os.path.abspath(arguments[0]) + "' is not a valid file or directory!\033[0m")
 	exit()
 
 
 # cleanup files
 files_cleaned = 0
-for file in files:
+for file_path in files:
 	
-	file_name = os.path.basename(file)
+	file_name = os.path.basename(file_path)
 	if verbosity >= 4: print("\nReading \033[95m" + file_name + "\033[0m.")
 	elif verbosity >= 3: print("\033[95m" + file_name + "\033[0m")
 	
 	# get data
-	try: content = zipfile.Path(file, "content.xml").read_text()
+	try: content = zipfile.Path(file_path, "content.xml").read_text()
 	except:
 		if verbosity >= 1: print("\033[93mERROR: '" + file_name + "' is invalid or has disappeared! Skipping file.\033[0m")
 	
@@ -329,13 +329,13 @@ for file in files:
 			if verbosity >= 4: print("\033[93mFound an empty style leftover.\033[0m LibreOffice will clean these up on it's own when saving the file.")
 			elif verbosity >= 3: print("\033[93mFound an empty style leftover.\033[0m")
 		
-		if content == zipfile.Path(file, "content.xml").read_text():
+		if content == zipfile.Path(file_path, "content.xml").read_text():
 			if verbosity >= 2: print("No changes made. Skipping saving process.")
 		else:
 			if verbosity >= 4: print("\nUpdating " + file_name + "...")
 			try:
-				with zipfile.ZipFile(file) as doc:
-					with zipfile.ZipFile(file + ".cleanup", "w") as temp_doc:
+				with zipfile.ZipFile(file_path) as doc:
+					with zipfile.ZipFile(file_path + ".cleanup", "w") as temp_doc:
 						temp_doc.writestr("content.xml", content.encode(), compress_type=zipfile.ZIP_DEFLATED)
 						for item in doc.infolist():
 							if not temp_doc.namelist().count(item.filename):
@@ -343,12 +343,13 @@ for file in files:
 			except:
 				if verbosity >= 1: print("\033[93mSaving failed! File has not been modified.\033[0m")
 			else:
-				new_file = file
-				if disposal == "trash": send2trash(file)
+				new_file = file_path
+				if disposal == "overwrite": os.remove(file_path)
+				if disposal == "trash": send2trash(file_path)
 				elif disposal == "none":
-					if "." in file_name: new_file = file[:file.rfind(".")] + "-cleaned" + file[file.rfind("."):]
+					if "." in file_name: new_file = file_path[:file_path.rfind(".")] + "-cleaned" + file_path[file_path.rfind("."):]
 					else: new_file += "-cleaned"
-				os.rename(file + ".cleanup", new_file)
+				os.rename(file_path + ".cleanup", new_file)
 				
 				if verbosity >= 2: print("\033[92m" + os.path.basename(new_file) + " saved.\033[0m")
 				files_cleaned += 1
