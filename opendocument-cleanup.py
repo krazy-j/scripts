@@ -26,23 +26,31 @@ verbosity_string = ""
 while len(sys_arguments):
 	# argument
 	if sys_arguments[0][0] == "-":
-		# combinable arguments
-		if not sys_arguments[0][1] == "-":
-			if "h" in sys_arguments[0]:
-				show_help = True
-				break
-			if "f" in sys_arguments[0]: remove_fonts = True
-			if "l" in sys_arguments[0]: remove_language = False
-			if "r" in sys_arguments[0]: recursive = True
-		# other arguments
-		if sys_arguments[0] == "--help":
+		# help
+		if sys_arguments[0] == "-h" or sys_arguments[0] == "--help":
 			show_help = True
 			break
-		if sys_arguments[0] == "-d" or sys_arguments[0] == "--disposal": disposal = sys_arguments.pop(1)
-		if sys_arguments[0] == "--removefonts": remove_fonts = True
-		if sys_arguments[0] == "--keeplanguage": remove_language = False
-		if sys_arguments[0] == "--recursive": recursive = True
-		if sys_arguments[0] == "-v" or sys_arguments[0] == "--verbosity": verbosity_string = sys_arguments.pop(1)
+		# value
+		elif sys_arguments[0] == "-d" or sys_arguments[0] == "--disposal": disposal = sys_arguments.pop(1)
+		elif sys_arguments[0] == "-v" or sys_arguments[0] == "--verbosity": verbosity_string = sys_arguments.pop(1)
+		# combinable
+		elif not sys_arguments[0][1] == "-":
+			for char in sys_arguments[0][1:]:
+				if char == "f": remove_fonts = True
+				elif char == "l": remove_language = False
+				elif char == "r": recursive = True
+				else:
+					if len(sys_arguments[0]) > 2: print("\033[93mERROR: '-" + char + "' (in '" + sys_arguments[0] + "') is not a valid argument!\033[0m")
+					else: print("\033[93mERROR: '-" + char + "' is not a valid argument!\033[0m")
+					print("See help (-h or --help) for information on arguments.")
+					exit()
+		# other
+		elif sys_arguments[0] == "--removefonts": remove_fonts = True
+		elif sys_arguments[0] == "--keeplanguage": remove_language = False
+		elif sys_arguments[0] == "--recursive": recursive = True
+		else:
+			print("\033[93mERROR: '" + sys_arguments[0] + "' is not a valid argument!\033[0m\nSee help (-h or --help) for information on arguments.")
+			exit()
 	# positional argument
 	else: arguments.append(sys_arguments[0])
 	# remove argument
@@ -329,8 +337,9 @@ for file_path in files:
 			if verbosity >= 4: print("\033[93mFound an empty style leftover.\033[0m LibreOffice will clean these up on it's own when saving the file.")
 			elif verbosity >= 3: print("\033[93mFound an empty style leftover.\033[0m")
 		
+		# save file
 		if content == zipfile.Path(file_path, "content.xml").read_text():
-			if verbosity >= 2: print("No changes made. Skipping saving process.")
+			if verbosity >= 2: print("No changes made to '" + file_name + "'. Skipping saving process.")
 		else:
 			if verbosity >= 4: print("\nUpdating " + file_name + "...")
 			try:
@@ -342,16 +351,18 @@ for file_path in files:
 								temp_doc.writestr(item, doc.read(item.filename))
 			except:
 				if verbosity >= 1: print("\033[93mSaving failed! File has not been modified.\033[0m")
+			# rename file
 			else:
-				new_file = file_path
+				new_file_path = file_path
 				if disposal == "overwrite": os.remove(file_path)
-				if disposal == "trash": send2trash(file_path)
+				elif disposal == "trash": send2trash(file_path)
 				elif disposal == "none":
-					if "." in file_name: new_file = file_path[:file_path.rfind(".")] + "-cleaned" + file_path[file_path.rfind("."):]
-					else: new_file += "-cleaned"
-				os.rename(file_path + ".cleanup", new_file)
+					if "." in file_name: new_file_path = file_path[:file_path.rfind(".")] + "-cleaned" + file_path[file_path.rfind("."):]
+					else: new_file_path += "-cleaned"
+					file_name = os.path.basename(new_file_path)
+				os.rename(file_path + ".cleanup", new_file_path)
 				
-				if verbosity >= 2: print("\033[92m" + os.path.basename(new_file) + " saved.\033[0m")
+				if verbosity >= 2: print("\033[92m" + file_name + " saved.\033[0m")
 				files_cleaned += 1
 
 if len(files) > 1: print(files_cleaned, "out of", len(files), "files cleaned.")
