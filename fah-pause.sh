@@ -1,5 +1,6 @@
 #!/bin/bash
 # To use this script, simply run it the same way you would run a sleep command, and it will pause Folding@home for the given amount of time.
+# The process can be stopped at any time (using CTRL+C) to cancel the timer and resume Folding@home.
 
 if [ $# -gt 0 ]; then
 	for arg in "$@"; do
