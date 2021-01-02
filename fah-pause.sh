@@ -1,4 +1,6 @@
 #!/bin/bash
+# To use this script, simply run it the same way you would run a sleep command, and it will pause Folding@home for the given amount of time.
+
 if [ $# -gt 0 ]; then
 	for arg in "$@"; do
 		time=$(($time+$(sed 's/d/*24*3600 +/g; s/h/*3600 +/g; s/m/*60 +/g; s/s/\+/g; s/+[ ]*$//g' <<< $arg | bc)))
