@@ -100,6 +100,7 @@ if verbosity_string:
 		verbosity = 4
 elif len(arguments) and os.path.isdir(arguments[0]): verbosity = 3
 else: verbosity = 4
+del verbosity_string
 
 # check disposal method
 if not (disposal == 'none' or disposal == 'trash' or disposal == 'overwrite'):
