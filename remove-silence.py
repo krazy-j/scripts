@@ -93,9 +93,9 @@ if verbosity_string:
 		print(f"\033[93m[ERROR] '{verbosity_string}' is not a valid verbosity!\033[0m")
 		print("Verbosity must be an integer from 0 to 4.\nSee help (-h or --help) for more info on arguments.")
 		verbosity = 4
-del verbosity_string
 elif len(arguments) and os.path.isdir(arguments[0]): verbosity = 3
 else: verbosity = 4
+del verbosity_string
 
 # get tolerance
 try:
@@ -212,6 +212,7 @@ def print_progress(progress, size=20, show_percent=True, ndigits=1, end='\n'):
 
 # remove silence
 files_modified = 0
+total_shrink = 0
 for file_path in files:
 	
 	file_name = os.path.basename(file_path)
@@ -351,9 +352,9 @@ for file_path in files:
 					os.rename(file_path + '.tmp', new_file_path)
 					
 					if verbosity >= 2: print(f"{file_name} saved ({initial_size - new_size}B smaller).")
-					files_cleaned += 1
+					files_modified += 1
 					total_shrink += initial_size - new_size
 
 if len(files) > 1:
-	if files_cleaned: print(f"{files_cleaned} out of {len(files)} files modified, {total_shrink}B total.")
+	if files_modified: print(f"{files_modified} out of {len(files)} files modified, {total_shrink}B total.")
 	else: print("No files were modified.")
