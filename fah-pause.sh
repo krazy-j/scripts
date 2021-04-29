@@ -5,29 +5,25 @@
 
 time=3600
 
-if [ $# -gt 0 ]
-then
-	time=0
-	for arg in "$@"
-	do time=$(($time+$(sed 's/d/*24*3600 +/g; s/h/*3600 +/g; s/m/*60 +/g; s/s/\+/g; s/+[ ]*$//g' <<< $arg | bc)))
-	done
+if (($#))
+then ((time=$(sed "s/d/*24*3600+/g; s/h/*3600+/g; s/m/*60+/g; s/s/+/g; s/+ *$//g" <<< $@)))
 fi
 
-printf "\e[31mPausing Folding@home for %d:%02d:%02d.\e[39m\\n" $(($time/3600)) $((($time/60)%60)) $(($time%60))
-trap 'echo -e "\nUnpausing Folding@home.";FAHClient -q --send-unpause &> /dev/null' EXIT
+printf "\e[31mPausing Folding@home for %d:%02d:%02d\e[39m\\n" $(($time/3600)) $((($time/60)%60)) $(($time%60))
+trap 'echo -e "\nUnpausing Folding@home";FAHClient -q --send-unpause &> /dev/null' EXIT
 
 FAHClient -q --send-pause &> /dev/null
 printf "\\rTime remaining - %d:%02d:%02d" $(($time/3600)) $((($time/60)%60)) $(($time%60))
 
-while [ $time -gt 0 ]
+while ((time>0))
 do
-	time=$(($time-1))
+	((time--))
 	printf "\\rTime remaining - %d:%02d:%02d" $(($time/3600)) $((($time/60)%60)) $(($time%60))
 	sleep 1
 done
 
-echo -e "\\r\e[33mDelay has ended.\e[39m        "
-echo "Unpausing Folding@home."
+echo -e "\\r\e[33mDelay has ended\e[39m        "
+echo "Unpausing Folding@home"
 FAHClient -q --send-unpause &> /dev/null
 
 trap EXIT
