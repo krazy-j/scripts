@@ -1,50 +1,46 @@
 #!/usr/bin/env python3
-import argparse
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from os import utime
+from time import time
 from pathlib import Path
-from datetime import datetime
 from shutil import copystat
 import re, zipfile
 
 # parse arguments
-parser = argparse.ArgumentParser(
+parser = ArgumentParser(
 	description="Used to clean up formatting information in OpenDocument files, because LibreOffice doesn't seem to do cleanup when saving on it's own. Focused on cleaning OpenDocument Text files, but also capable of cleaning other OpenDocument formats on a basic level. The cleaning process removes unused or redundant data in the content.xml (document/page content) by default. Your styles and such will not be modified.\nBy default, cleaned files are saved as copies so that you still have the original in case the script somehow messes something up. (It's a good idea to check the cleaned document to make sure it still looks correct, just in case.)",
 	epilog="""
 values for disposal:
-	none ────── leave untouched and create a copy with '-cleanup' at the end of the name
-	trash ───── move to trash and replace with the cleaned files
-	overwrite ─ overwrite originals (I strongly advise against using this, as this script is not perfect, and may make mistakes)
+  none          leave untouched and create a copy with '-cleanup' at the end of the name
+  trash         move to trash and replace with the cleaned files
+  overwrite     overwrite originals (I strongly advise against using this, as this script is not perfect, and may make mistakes)
 
 values for verbosity:
-	0 ─ nothing
-	1 ─ errors only
-	2 ─ errors, error tips, opening/saving
-	3 ─ same as 2 but adds data removal stats (default when cleaning multiple files or a directory)
-	4 ─ all available info (default when given a single file)
+  0     nothing
+  1     errors only
+  2     errors, error tips, opening/saving
+  3     same as 2 but adds data removal stats (default when cleaning multiple files or a directory)
+  4     all available info (default when given a single file)
 
 If an unhandled error occurs with the script, check on GitHub to see if it's been fixed recently, or if it hasn't, feel free to post the issue.
 """,
-	formatter_class=argparse.RawDescriptionHelpFormatter
+	formatter_class=RawDescriptionHelpFormatter
 )
 parser.add_argument("paths", metavar='path', type=Path, nargs='+', help="path (or paths) to file or directory to clean. If given a directory, ")
 parser.add_argument("-d", "--disposal", type=str, choices=['none','trash','overwrite'], default='none', help="what to do with the original file after cleanup (default: none)")
 parser.add_argument("-r", "--recursive", action='store_true', help="also search for files in subdirectories when given a directory")
 parser.add_argument("-f", "--remove-fonts", action='store_true', help="remove font information (typeface only) from direct formatting (highly suggested if only one font is used in a given file)")
 parser.add_argument("-l", "--keep-language", dest="remove_language", action='store_false', help="keep language and country information - (this information is almost never relevant)")
-parser.add_argument("-v", "--verbosity", metavar="{0..4}", type=int, choices=range(5), default=3, help="how much information will be printed")
-parser.parse_args()
-
+parser.add_argument("-v", "--verbosity", metavar="{0..4}", type=int, choices=range(5), help="how much information will be printed")
 args = parser.parse_args()
 
 # import send2trash
 if args.disposal == 'trash': from send2trash import send2trash
-
 # default verbosity
-if args.verbosity is None: args.verbosity = 3 if len(args.paths) > 1 or path.isdir(args.paths[0]) else 4
+if args.verbosity is None: args.verbosity = 3 if len(args.paths) > 1 or args.paths[0].is_dir() else 4
 
 # get files
 files = set()
-
 for path in args.paths:
 	if path.exists():
 		# test if file is a valid document
@@ -69,7 +65,6 @@ for path in args.paths:
 					print(f"Found {len(dir_files)} files in {dir_path.resolve()}")
 				return dir_files.union(sub_dir_files)
 			
-			
 			files.update(get_documents(path))
 			
 			if args.verbosity:
@@ -93,27 +88,23 @@ for path in args.paths:
 files_cleaned = 0
 total_shrink = 0
 for path in files:
-	
+	# determine destination for saving
 	if args.disposal == 'none':
 		if path.suffix: save_path = path.with_name(path.name[:-len(path.suffix)] + '-cleaned' + path.name[-len(path.suffix):])
 		else: save_path = path + '-cleaned'
 	else: save_path = path
 	
+	# verify and read file
 	if args.verbosity >= 4: print(f"\nReading \33[95m{path.name}\33[0m.")
 	elif args.verbosity >= 3: print(f"\33[95m{path.name}\33[0m")
-	
-	# verify file
 	try:
 		# check that destination is available
 		if args.disposal == 'none' and save_path.exists(): raise Exception(f"'{save_path}' already exists")
-		# read file
+		# read content
 		content = zipfile.Path(path, 'content.xml').read_text()
-	except KeyError:
-		print(f"\33[93m'{path}' is not a document\33[0m, skipping file.")
-	except (Exception, FileNotFoundError, OSError) as error:
-		print(f"\33[93m{error}\33[0m, skipping file.")
-	
-	# clean file
+	except KeyError: print(f"\33[93m'{path}' is not a document\33[0m, skipping file.")
+	except (Exception, FileNotFoundError, OSError) as error: print(f"\33[93m{error}\33[0m, skipping file.")
+	# clean document
 	else:
 		# functions
 		def get_element_end(pos : int) -> int:
@@ -143,10 +134,8 @@ for path in files:
 				removed += 1
 			if args.verbosity >= 3 and removed: print(f"\33[92mRemoved {removed} {message}.\33[0m")
 		
-		# begin cleanup
-		if args.verbosity >= 4: print("Beginning content cleanup process...\n")
-		
-		if args.verbosity >= 4: print("Removing irrelevant data...")
+		# cleanup
+		if args.verbosity >= 4: print("Beginning content cleanup process...\n\nRemoving irrelevant data...")
 		remove_attribute([' officeooo:rsid="', '"'], "officeooo:rsid entries")
 		remove_attribute([' officeooo:paragraph-rsid="', '"'], "officeooo:paragraph-rsid entries")
 		remove_attribute([' loext:opacity="100%"'], "loext:opacity entries")
@@ -155,12 +144,10 @@ for path in files:
 			if args.verbosity >= 4: print("Searching for languages and countries...")
 			remove_attribute([' style:language', '"', '"'], "language entries")
 			remove_attribute([' style:country', '"', '"'], "country entries")
-		
 		if args.remove_fonts:
 			if args.verbosity >= 4: print("Searching for fonts...")
 			remove_attribute(['<style:font-face', '/>'], "fonts")
 			remove_attribute([' style:font-name="', '"'], "styles")
-		
 		
 		if args.verbosity >= 4: print("Searching for orphan styles...")
 		removed = 0
@@ -168,7 +155,7 @@ for path in files:
 		while '<style:style' in content[pos:]:
 			# find style
 			pos = content.find('<style:style', pos)
-			# check to see if it's used anywhere
+			# check if style is used anywhere
 			if 'style-name="' + get_property(pos, 'style:name') in content: pos += 1
 			else:
 				# remove style
@@ -182,7 +169,7 @@ for path in files:
 		while '<text:list-style' in content[pos:]:
 			# find style
 			pos = content.find('<text:list-style', pos)
-			# check to see if it's used anywhere
+			# check if style is used anywhere
 			if 'style-name="' + get_property(pos, 'style:name') in content: pos += 1
 			else:
 				# remove style
@@ -257,7 +244,6 @@ for path in files:
 			pos += 1
 		if args.verbosity >= 3 and removed: print(f"\33[92mMerged {removed} identical list styles.\33[0m")
 		
-		
 		# save file
 		if content != zipfile.Path(path, 'content.xml').read_text():
 			# create new file
@@ -268,15 +254,14 @@ for path in files:
 					with zipfile.ZipFile(temp_path, 'w') as temp_doc:
 						temp_doc.writestr('content.xml', content.encode(), compress_type=zipfile.ZIP_DEFLATED)
 						for item in doc.infolist():
-							if not temp_doc.namelist().count(item.filename):
+							if not item.filename in temp_doc.namelist():
 								temp_doc.writestr(item, doc.read(item.filename))
 				copystat(path, temp_path)
-				now = datetime.now().timestamp()
+				now = time()
 				utime(temp_path, (now, now))
 			# error creating file
 			except BaseException as error:
-				if args.verbosity:
-					print(f"\33[91m{error}\33[0m, save aborted. (File has not been modified.)")
+				if args.verbosity: print(f"\33[91m{error}\33[0m, save aborted. (File has not been modified.)")
 			# rename file
 			else:
 				shrink = path.stat().st_size - temp_path.stat().st_size
